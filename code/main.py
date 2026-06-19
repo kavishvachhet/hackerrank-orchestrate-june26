@@ -52,10 +52,44 @@ def process_claims(
     reset_token_usage()
     
     # Process each claim
+    processed_claims = set()
+    if output_csv.exists():
+        try:
+            with open(output_csv, "r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    # Only skip if it was actually processed successfully AND prediction is strong
+                    is_api_failure = "API call failed" in row.get("evidence_standard_met_reason", "")
+                    is_weak = (
+                        row.get("issue_type", "") in ("unknown", "none") or
+                        row.get("object_part", "") == "unknown" or
+                        (row.get("severity", "") == "none" and row.get("claim_status", "") == "contradicted")
+                    )
+                    if not is_api_failure and not is_weak:
+                        processed_claims.add(row["user_claim"])
+        except Exception as e:
+            print(f"Could not read existing output file for resume: {e}")
+
+    # Process claims
     results = []
+    
+    # Pre-load previously successful results so we don't lose them when writing
+    if output_csv.exists() and processed_claims:
+        with open(output_csv, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if row["user_claim"] in processed_claims:
+                    results.append(row)
+
+    print(f"[*] Resuming: {len(processed_claims)} claims already processed successfully.")
+    
     start_time = time.time()
     
     for i, claim in enumerate(claims, 1):
+        if claim["user_claim"] in processed_claims:
+            print(f"[{i}/{len(claims)}] Skipping {claim['user_id']} (already processed)")
+            continue
+            
         user_id = claim["user_id"]
         claim_obj = claim["claim_object"]
         print(f"[{i}/{len(claims)}] Processing {user_id} ({claim_obj})...", end=" ", flush=True)

@@ -80,6 +80,20 @@ TASK:
 6. Check for image quality issues, mismatches, or suspicious elements.
 7. Consider user history for risk context (but don't override clear visual evidence).
 
+IMPORTANT DECISION GUIDELINES:
+- "contradicted" means the images ACTIVELY SHOW something different from the claim (e.g., user claims scratch but image shows broken part, or user claims rear damage but image shows front damage, or image shows a completely different object like a phone instead of a laptop). Always set a specific severity (low/medium/high) for contradicted claims, NOT "none".
+- "not_enough_information" means the images are too blurry, wrong angle, obstructed, or simply don't show the claimed part at all.
+- Always try to identify the specific issue_type and object_part even for contradicted/NEI claims. Only use "unknown" if you truly cannot determine it.
+- If an image shows a DIFFERENT OBJECT entirely (e.g., toy car instead of real car, phone instead of laptop), flag as "wrong_object" and set claim_status to "contradicted".
+- If user claims part X but images show damage on part Y, that is "contradicted" with "wrong_object_part" flag.
+
+EXAMPLE DECISIONS (for reference):
+Example 1 - Contradicted (claim mismatch): User claims "front bumper scratch" but image shows severe broken bumper with dents. Result: contradicted, issue_type=broken_part, severity=high, risk_flags=claim_mismatch
+Example 2 - Contradicted (wrong object): User claims "laptop body crack" but image shows a smartphone with shattered screen. Result: contradicted, issue_type=glass_shatter, object_part=screen, risk_flags=wrong_object, severity=high
+Example 3 - Contradicted (wrong part): User claims "taillight cracked" but image shows front headlight damage. Result: contradicted, issue_type=dent, object_part=front_bumper, risk_flags=wrong_object_part, severity=medium
+Example 4 - NEI (can't see claimed part): User claims "headlight cracked" but image is taken from far away with sun glare obscuring the headlight. Result: not_enough_information, issue_type=unknown, risk_flags=cropped_or_obstructed;low_light_or_glare, severity=unknown
+Example 5 - Supported: User claims "dent on door panel" and image clearly shows a dent on the door. Result: supported, issue_type=dent, object_part=door, severity=medium
+
 ALLOWED VALUES:
 - claim_status: {', '.join(CLAIM_STATUS_VALUES)}
 - issue_type: {', '.join(ISSUE_TYPE_VALUES)}
