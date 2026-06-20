@@ -35,6 +35,17 @@ ISSUE_TYPE_VALUES = [
     "water_damage", "stain", "none", "unknown"
 ]
 
+# Per-object filtered issue_type lists. Keeps the model from picking
+# implausible types for the wrong object (e.g. torn_packaging for a car).
+ISSUE_TYPES_BY_OBJECT = {
+    "car":     ["dent", "scratch", "crack", "glass_shatter", "broken_part",
+                "missing_part", "stain", "none", "unknown"],
+    "laptop":  ["dent", "scratch", "crack", "glass_shatter", "broken_part",
+                "missing_part", "water_damage", "stain", "none", "unknown"],
+    "package": ["torn_packaging", "crushed_packaging", "water_damage",
+                "stain", "missing_part", "broken_part", "none", "unknown"],
+}
+
 CAR_OBJECT_PARTS = [
     "front_bumper", "rear_bumper", "door", "hood", "windshield",
     "side_mirror", "headlight", "taillight", "fender", "quarter_panel",
