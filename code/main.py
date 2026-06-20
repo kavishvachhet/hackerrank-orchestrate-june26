@@ -1,189 +1,44 @@
 """
-Main orchestration pipeline for Multi-Modal Evidence Review.
+Main Entry Point for HackerRank Evidence Review.
+Delegates to the OpenRouter V3 (Anti-Hallucination) pipeline.
 
 Usage:
-    python main.py                         # Process claims.csv -> output.csv
-    python main.py --mode sample           # Process sample_claims.csv -> sample_output.csv
-    python main.py --strategy b            # Use two-pass strategy
-    python main.py --input custom.csv      # Custom input file
+  python code/main.py --mode test
+  python code/main.py --mode sample
 """
-import csv
 import sys
-import time
+import os
 import argparse
 from pathlib import Path
 
-from config import (
-    SAMPLE_CLAIMS_CSV, CLAIMS_CSV, OUTPUT_CSV, DATASET_DIR, OUTPUT_COLUMNS,
-)
-from data_loader import load_claims, load_user_history, load_evidence_requirements
-from image_analyzer import (
-    analyze_claim_strategy_a, analyze_claim_strategy_b,
-    get_token_usage, reset_token_usage,
-)
-from postprocessor import postprocess_result, format_output_row
+# Ensure the code directory is in the path
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-
-def process_claims(
-    input_csv: Path,
-    output_csv: Path,
-    strategy: str = "a",
-) -> list[dict]:
-    """Process all claims from input CSV and write results to output CSV."""
-    
-    print(f"\n{'='*60}")
-    print(f"Multi-Modal Evidence Review Agent")
-    print(f"{'='*60}")
-    print(f"Input:    {input_csv}")
-    print(f"Output:   {output_csv}")
-    print(f"Strategy: {'A (Single-pass)' if strategy == 'a' else 'B (Two-pass)'}")
-    print(f"{'='*60}\n")
-    
-    # Load reference data
-    print("[*] Loading reference data...")
-    user_history = load_user_history()
-    evidence_requirements = load_evidence_requirements()
-    claims = load_claims(input_csv)
-    print(f"   + {len(claims)} claims loaded")
-    print(f"   + {len(user_history)} user history records")
-    print(f"   + {len(evidence_requirements)} evidence requirements\n")
-    
-    # Reset token tracking
-    reset_token_usage()
-    
-    # Process each claim
-    processed_claims = set()
-    if output_csv.exists():
-        try:
-            with open(output_csv, "r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    # Only skip if it was actually processed successfully AND prediction is strong
-                    is_api_failure = "API call failed" in row.get("evidence_standard_met_reason", "")
-                    is_weak = (
-                        row.get("issue_type", "") in ("unknown", "none") or
-                        row.get("object_part", "") == "unknown" or
-                        (row.get("severity", "") == "none" and row.get("claim_status", "") == "contradicted")
-                    )
-                    if not is_api_failure and not is_weak:
-                        processed_claims.add(row["user_claim"])
-        except Exception as e:
-            print(f"Could not read existing output file for resume: {e}")
-
-    # Process claims
-    results = []
-    
-    # Pre-load previously successful results so we don't lose them when writing
-    if output_csv.exists() and processed_claims:
-        with open(output_csv, "r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row["user_claim"] in processed_claims:
-                    results.append(row)
-
-    print(f"[*] Resuming: {len(processed_claims)} claims already processed successfully.")
-    
-    start_time = time.time()
-    
-    for i, claim in enumerate(claims, 1):
-        if claim["user_claim"] in processed_claims:
-            print(f"[{i}/{len(claims)}] Skipping {claim['user_id']} (already processed)")
-            continue
-            
-        user_id = claim["user_id"]
-        claim_obj = claim["claim_object"]
-        print(f"[{i}/{len(claims)}] Processing {user_id} ({claim_obj})...", end=" ", flush=True)
-        
-        # Lookup user history
-        history = user_history.get(user_id)
-        
-        # Run analysis
-        claim_start = time.time()
-        if strategy == "a":
-            raw_result = analyze_claim_strategy_a(claim, history, evidence_requirements)
-        else:
-            raw_result = analyze_claim_strategy_b(claim, history, evidence_requirements)
-        
-        # Post-process
-        final_result = postprocess_result(raw_result, claim, history)
-        output_row = format_output_row(final_result)
-        results.append(output_row)
-        
-        elapsed = time.time() - claim_start
-        status = output_row["claim_status"]
-        print(f"-> {status} ({elapsed:.1f}s)")
-        
-        # Small delay between calls to respects free-tier 15 RPM
-        if i < len(claims):
-            time.sleep(5.0)
-    
-    total_time = time.time() - start_time
-    
-    # Write output CSV
-    print(f"\n[*] Writing results to {output_csv}...")
-    write_output_csv(results, output_csv)
-    
-    # Print summary
-    usage = get_token_usage()
-    print(f"\n{'='*60}")
-    print(f"COMPLETE")
-    print(f"{'='*60}")
-    print(f"Claims processed:  {len(results)}")
-    print(f"Total time:        {total_time:.1f}s ({total_time/len(results):.1f}s/claim)")
-    print(f"API calls:         {usage['total_calls']}")
-    print(f"Images processed:  {usage['total_images_processed']}")
-    print(f"Input tokens:      {usage['total_input_tokens']:,}")
-    print(f"Output tokens:     {usage['total_output_tokens']:,}")
-    
-    # Cost estimate (Groq free tier - no cost)
-    input_cost = (usage['total_input_tokens'] / 1_000_000) * 0.05
-    output_cost = (usage['total_output_tokens'] / 1_000_000) * 0.08
-    print(f"Estimated cost:    ${input_cost + output_cost:.4f} (Groq)")
-    print(f"{'='*60}\n")
-    
-    return results
-
-
-def write_output_csv(results: list[dict], output_path: Path):
-    """Write results to a CSV file with the exact required schema."""
-    with open(output_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=OUTPUT_COLUMNS, quoting=csv.QUOTE_ALL)
-        writer.writeheader()
-        for row in results:
-            writer.writerow(row)
-    print(f"   + {len(results)} rows written")
-
+from config import SAMPLE_CLAIMS_CSV, CLAIMS_CSV, DATASET_DIR
+from openrouter_v3.main_v3 import process_claims
 
 def main():
-    parser = argparse.ArgumentParser(description="Multi-Modal Evidence Review Agent")
-    parser.add_argument("--mode", choices=["sample", "test"], default="test",
-                        help="Process sample_claims.csv (sample) or claims.csv (test)")
-    parser.add_argument("--strategy", choices=["a", "b"], default="a",
-                        help="Strategy A (single-pass) or B (two-pass)")
-    parser.add_argument("--input", type=str, default=None,
-                        help="Custom input CSV path")
-    parser.add_argument("--output", type=str, default=None,
-                        help="Custom output CSV path")
-    
+    parser = argparse.ArgumentParser(description="Run Evidence Review Pipeline (V3)")
+    parser.add_argument("--mode", choices=["test", "sample"], default="test", help="Which dataset to process")
     args = parser.parse_args()
-    
-    # Determine input/output paths
-    if args.input:
-        input_csv = Path(args.input)
-    elif args.mode == "sample":
+
+    # Determine input/output paths based on mode
+    if args.mode == "sample":
         input_csv = SAMPLE_CLAIMS_CSV
+        output_csv = DATASET_DIR / "sample_v3_output.csv"
     else:
         input_csv = CLAIMS_CSV
-    
-    if args.output:
-        output_csv = Path(args.output)
-    elif args.mode == "sample":
-        output_csv = DATASET_DIR / "sample_output.csv"
-    else:
-        output_csv = OUTPUT_CSV
-    
-    process_claims(input_csv, output_csv, args.strategy)
+        output_csv = DATASET_DIR / "output.csv"  # Final output name
 
+    # Execute the V3 pipeline
+    process_claims(input_csv, output_csv)
 
 if __name__ == "__main__":
+    # Check for API Key
+    if not os.environ.get("OPENROUTER_API_KEY"):
+        print("ERROR: OPENROUTER_API_KEY environment variable is missing.", file=sys.stderr)
+        print("Please set it before running. Example:", file=sys.stderr)
+        print("  $env:OPENROUTER_API_KEY=\"your_key_here\"; python code/main.py --mode test", file=sys.stderr)
+        sys.exit(1)
+
     main()
