@@ -17,8 +17,8 @@ from config import (
     CLAIM_STATUS_VALUES, ISSUE_TYPE_VALUES, SEVERITY_VALUES,
 )
 from data_loader import load_claims
-from main import process_claims
-from image_analyzer import get_token_usage, reset_token_usage
+from openrouter_v3.main_v3 import process_claims
+from openrouter_v3.analyzer_v3 import get_token_usage, reset_token_usage
 
 
 def evaluate_predictions(predictions: list[dict], ground_truth: list[dict]) -> dict:
@@ -278,7 +278,7 @@ def run_evaluation(run_strategy_b: bool = False):
     reset_token_usage()
     sample_output_a = DATASET_DIR / "sample_output_a.csv"
     start_a = time.time()
-    predictions_a = process_claims(SAMPLE_CLAIMS_CSV, sample_output_a, strategy="a")
+    predictions_a = process_claims(SAMPLE_CLAIMS_CSV, sample_output_a)
     runtime_a = time.time() - start_a
     usage_a = get_token_usage()
     
